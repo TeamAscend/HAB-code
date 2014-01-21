@@ -189,6 +189,8 @@ void loop()   {
    //openLog.println(txstring);    //this should write the data string to the openLog SD card, one line for each entry
    //openLog.println(currentPressure, currentAltitude);
    
+  openLog.println(bmp.readTemperature(), bmp.readPressure());
+  openLog.println(bmp.readAltitude());
    
   oldhour = hour;
   oldminute = minute;
@@ -791,7 +793,6 @@ ISR(TIMER1_COMPA_vect)
       txstatus = 2;
       txj = 0;
       openLog.println(txstring);    //this should write the data string to the openLog SD card, one line for each entry
-      //openLog.println(bmp.readTemperature());
       break;
 
     case 2: // Grab a char and lets go transmit it.
@@ -874,7 +875,7 @@ void prepare_data() {
 // The following two lines of code are used with the DallasOneWire Temperature Sensor only  
 // sensors.requestTemperatures();
 //  temperature = sensors.getTempCByIndex(0);
- currentTemperature = bmp.readTemperature(); // obtain temperature from the BMP085 sensor
+ currentTemperature = (int)bmp.readTemperature(); // obtain temperature from the BMP085 sensor
   altitudeNow();  //sets the currentAltitude variable
   currentPressure = bmp.readPressure();
   gps_check_lock();
