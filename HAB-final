@@ -2,44 +2,44 @@
  HABDuino Tracker
  http://www.habduino.org
  (c) Anthony Stirk M0UPU
-
+ 
  August 2013 Version 1.1
-
+ 
  Credits :
-
+ 
  Interrupt Driven RTTY Code : Evolved from Rob Harrison's RTTY Code.
  Thanks to :  http://www.engblaze.com/microcontroller-tutorial-avr-and-arduino-timer-interrupts/
  http://gammon.com.au/power
-
+ 
  GPS Code from jonsowman and Joey flight computer CUSF
  https://github.com/cuspaceflight/joey-m/tree/master/firmware
-
+ 
  BMP085 library software taken from Adafruit
  LMT2 N&R Calculation code Daniel Richman & Adam Greig :
  From python fractions.Fraction.limit_denominator
  Originally contributed by Sjoerd Mullender.
  Significantly modified by Jeffrey Yasskin <jyasskin at gmail.com>.
  Ported to C by Daniel Richman
-
+ 
  Thanks to :
-
+ 
  Phil Heron
  James Coxon
  Dave Akerman
  Adafruit
-
+ 
  The UKHAS Community http://ukhas.org.uk
-
+ 
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
  (at your option) any later version.
-
+ 
  This program is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
-
+ 
  See <http://www.gnu.org/licenses/>.
  */
 
@@ -47,8 +47,8 @@
 char callsign[9] = "HAB55331";  // Change this to what you want to call your HAB - MAX 9 CHARACTERS!!
 
 /*****
-Load the required Arduino libraries for the various functions and devices
-*****/
+ * Load the required Arduino libraries for the various functions and devices
+ *****/
 
 #include <util/crc16.h>   //CRC is a way of detecting accidental changes in data storage or transmission
 #include <avr/io.h>       //Provides microprocessor specific memory register information probably used with the interrupt routines
@@ -60,8 +60,8 @@ Load the required Arduino libraries for the various functions and devices
 #include <Adafruit_BMP085.h>    //Library for the BMP085 pressure and temperature sensor credit to Adafruit for the code
 
 /*****
-Define certain fixed variables here, this allows for easy alteration
-*****/
+ * Define certain fixed variables here, this allows for easy alteration
+ *****/
 
 #define ASCII 7          // ASCII 7 or 8
 #define STOPBITS 2       // Either 1 or 2
@@ -86,14 +86,14 @@ Adafruit_BMP085 bmp;  // name the instance of the barometric-temperater sensor
 SoftwareSerial openLog(5,4);   //RX, TX
 
 /*****
-The Volatile variable qualifier directs the compiler to load the variable from RAM and not from
-a storage register, which is a temporary memory location where program variables are stored and
-manipulated. Under certain conditions, the value for a variable stored in registers can be inaccurate.
-A variable should be declared volatile whenever its value can be changed by something beyond
-the control of the code section in which it appears, such as a concurrently executing thread.
-In the Arduino, the only place that this is likely to occur is in sections of code associated
-with interrupts, called an interrupt service routine.
-*****/
+ * The Volatile variable qualifier directs the compiler to load the variable from RAM and not from
+ * a storage register, which is a temporary memory location where program variables are stored and
+ * manipulated. Under certain conditions, the value for a variable stored in registers can be inaccurate.
+ * A variable should be declared volatile whenever its value can be changed by something beyond
+ * the control of the code section in which it appears, such as a concurrently executing thread.
+ * In the Arduino, the only place that this is likely to occur is in sections of code associated
+ * with interrupts, called an interrupt service routine.
+ *****/
 
 volatile int txstatus = 1;
 volatile int txstringlength = 0;
@@ -106,26 +106,32 @@ volatile static byte *_txbuf = 0;
 volatile static byte  _txlen = 0;
 
 /*****
-Initiate the Error Status Bit Level Field :
- Bit 0 = GPS Error Condition Noted Switch to Max Performance Mode
- Bit 1 = GPS Error Condition Noted Cold Boot GPS
- Bit 2 = Not used in HABduino
- Bit 3 = Current Dynamic Model 0 = Flight 1 = Pedestrian
- Bit 4 = PSM Status 0 = PSM On 1 = PSM Off
- Bit 5 = Lock 0 = GPS Locked 1= Not Locked
-
- So error 8 means that everything is fine just the GPS is in pedestrian mode.
- Below 1000 meters the code puts the GPS in the more accurate pedestrian mode.
- Above 1000 meters it switches to dynamic model 6 i.e flight mode and turns the LED's off for additional power saving.
- So as an example error code 40 = 101000 means GPS not locked and in pedestrian mode.
-*****/
+ * Initiate the Error Status Bit Level Field :
+ * Bit 0 = GPS Error Condition Noted Switch to Max Performance Mode
+ * Bit 1 = GPS Error Condition Noted Cold Boot GPS
+ * Bit 2 = Not used in HABduino
+ * Bit 3 = Current Dynamic Model 0 = Flight 1 = Pedestrian
+ * Bit 4 = PSM Status 0 = PSM On 1 = PSM Off
+ * Bit 5 = Lock 0 = GPS Locked 1= Not Locked
+ * 
+ * So error 8 means that everything is fine just the GPS is in pedestrian mode.
+ * Below 1000 meters the code puts the GPS in the more accurate pedestrian mode.
+ * Above 1000 meters it switches to dynamic model 6 i.e flight mode and turns the LED's off for additional power saving.
+ * So as an example error code 40 = 101000 means GPS not locked and in pedestrian mode.
+ *****/
 
 int errorstatus = 0;
 
 /*****
-Initiate the global variables for the main loop.
-Global variables are available (in scope) to the whole programme
-*****/
+ * Initiate the global variables for the main loop.
+ * Global variables are available (in scope) to the whole programme
+ *****/
+
+int tempInside;      //declare variable as global so it's avaibable to all
+float initialPressure;     //declare variable as global so it's avaibable to all
+int actualAltitude;  //declare variable as global so it's avaibable to all
+float currentPressure;
+int tempOutside;
 
 char txstring[80];
 byte buf[60];
@@ -141,11 +147,10 @@ unsigned long startTime;
 char comment[3] = {
   ' ', ' ', '\0'
 };
-int startPressure = 0, currentPressure = 0, currentAltitude = 0, currentTemperature = 12; //these variables are used by the pressure sensor
 
 /*****
-Purpose: Programme Setup only runs once at start
-*****/
+ * Purpose: Programme Setup only runs once at start
+ *****/
 
 void setup()  {
   pinMode(NTX2_TXD, OUTPUT);
@@ -158,10 +163,10 @@ void setup()  {
   while(!Serial){    //wait until serial port connected - this is for the Leonardo board only
     ;
   }
- delay(5000);
+  delay(5000);
   openLog.begin(9600);    //start the SoftSerial port for fast write - change to 9600 if unreliable
   delay (1000);   //just to give a little time to initialise the softserial port
-  
+
   digitalWrite(NTX2_ENABLE, HIGH);
   blinkled(5);
   digitalWrite(GPS_ON, HIGH);
@@ -175,23 +180,26 @@ void setup()  {
 #ifdef POWERSAVING
   ADCSRA = 0;
 #endif
-  //sensors.begin();
-  calibrate_BMP085();    //find out the current atmos pressure and use this as sea level
-  
+
+
+  sensors.begin();   //start the onewire sensor
+
+
+  if (!bmp.begin()) {      //check and wait to see if the pressure sensor is working 
+    Serial.println("Could not find a valid BMP085 sensor, check wiring!");
+    while (1) {
+    }
+  }
+  // obtain the inital air pressure reading for the day to set the zero altitude
+  initialPressure = bmp.readPressure();  
 }
 
 /*****
-Purpose: Main programme loop runs continuously
-*****/
+ * Purpose: Main programme loop runs continuously
+ *****/
 
 void loop()   {
-  
-   //openLog.println(txstring);    //this should write the data string to the openLog SD card, one line for each entry
-   //openLog.println(currentPressure, currentAltitude);
-   
-  openLog.println(bmp.readTemperature(), bmp.readPressure());
-  openLog.println(bmp.readAltitude());
-   
+
   oldhour = hour;
   oldminute = minute;
   oldsecond = second;
@@ -237,38 +245,13 @@ void loop()   {
   }
 }
 
-/*****
-Purpose: Calibration of the pressure sensor
-Parameters:none
-Return value:none
-*****/
 
-int calibrate_BMP085()
-{
-  while (!bmp.begin()) {
-    blinkled(2);
-    wait (200);
-  }
-  startPressure = bmp.readPressure();    //reads the current atmospheric pressure at start up
-}
 
 /*****
-Purpose: Calculate actual altitude
-Parameters:none
-Return value:int currentAltitude  Height above sea level adjusted for launch site
-*****/
-
-int altitudeNow()
-{
-  currentAltitude = bmp.readAltitude(startPressure) + START_ALT;  //reads the current atmospheric pressure at start up and add start altitude
-  return currentAltitude;
-}
-
-/*****
-Purpose: Function to blink the warning LED a number of times
-Parameters:int blink	The number of times to blink the warning LED
-Return value:none
-*****/
+ * Purpose: Function to blink the warning LED a number of times
+ * Parameters:int blink	The number of times to blink the warning LED
+ * Return value:none
+ *****/
 
 void blinkled(int blinks)
 {
@@ -290,10 +273,10 @@ void blinkledOK(int blinks)
 }
 
 /*****
-Purpose: Function to wait a certain length of time
-Parameters:unsigned long 	The delay time required in millis
-Return value:none
-*****/
+ * Purpose: Function to wait a certain length of time
+ * Parameters:unsigned long 	The delay time required in millis
+ * Return value:none
+ *****/
 
 void wait(unsigned long delaytime) // Arduino Delay doesn't get CPU Speeds below 8Mhz
 {
@@ -319,10 +302,10 @@ void sendUBX(byte *MSG, byte len) {
 }
 
 /*****
-Purpose: Turning off all GPS NMEA strings on the uBlox module
-Parameters:none
-Return value:none
-*****/
+ * Purpose: Turning off all GPS NMEA strings on the uBlox module
+ * Parameters:none
+ * Return value:none
+ *****/
 
 void setupGPS() {
   int gps_set_sucess = 0;
@@ -349,10 +332,10 @@ void setupGPS() {
 }
 
 /*****
-Purpose:
-Parameters:none
-Return value:none
-*****/
+ * Purpose:
+ * Parameters:none
+ * Return value:none
+ *****/
 
 void setGPS_DynamicModel6()
 {
@@ -372,10 +355,10 @@ void setGPS_DynamicModel6()
 }
 
 /*****
-Purpose:
-Parameters:none
-Return value:none
-*****/
+ * Purpose:
+ * Parameters:none
+ * Return value:none
+ *****/
 
 void setGPS_DynamicModel3()
 {
@@ -395,10 +378,10 @@ void setGPS_DynamicModel3()
 }
 
 /*****
-Purpose: Sets the Ublox module in max performance mode
-Parameters:none
-Return value:none
-*****/
+ * Purpose: Sets the Ublox module in max performance mode
+ * Parameters:none
+ * Return value:none
+ *****/
 
 void setGps_MaxPerformanceMode() {
   //Set GPS for Max Performance Mode
@@ -530,7 +513,7 @@ bool _gps_verify_checksum(byte* data, byte len)
     return true;
 }
 void gps_ubx_checksum(byte* data, byte len, byte* cka,
-                      byte* ckb)
+byte* ckb)
 {
   *cka = 0;
   *ckb = 0;
@@ -567,10 +550,10 @@ void setGPS_PowerSaveMode() {
 }
 
 /*****
-Purpose: Checks to see if the GPS has got a satellite lock
-Parameters:none
-Return value:none  No value is returned by sets reporting flags
-*****/
+ * Purpose: Checks to see if the GPS has got a satellite lock
+ * Parameters:none
+ * Return value:none  No value is returned by sets reporting flags
+ *****/
 
 void gps_check_lock()
 {
@@ -613,10 +596,10 @@ void gps_check_lock()
 }
 
 /*****
-Purpose: Requests and receives the positional data from the GPS
-Parameters:none
-Return value: long lon, long lat, long alt            Global variables for longditude, lattitude and altitude
-*****/
+ * Purpose: Requests and receives the positional data from the GPS
+ * Parameters:none
+ * Return value: long lon, long lat, long alt            Global variables for longditude, lattitude and altitude
+ *****/
 
 void gps_get_position()
 {
@@ -652,11 +635,11 @@ void gps_get_position()
     else
     {
       lon = (long)buf[10] | (long)buf[11] << 8 |
-            (long)buf[12] << 16 | (long)buf[13] << 24;
+        (long)buf[12] << 16 | (long)buf[13] << 24;
       lat = (long)buf[14] | (long)buf[15] << 8 |
-            (long)buf[16] << 16 | (long)buf[17] << 24;
+        (long)buf[16] << 16 | (long)buf[17] << 24;
       alt = (long)buf[22] | (long)buf[23] << 8 |
-            (long)buf[24] << 16 | (long)buf[25] << 24;
+        (long)buf[24] << 16 | (long)buf[25] << 24;
     }
     // 4 bytes of latitude/longitude (1e-7)
     lon_int = abs(lon / 10000000);
@@ -669,10 +652,10 @@ void gps_get_position()
 }
 
 /*****
-Purpose: Requests and receives the time data from the GPS
-Parameters:none
-Return value: byte hour, byte minute, byte second            Global variables for hour, minute and second
-*****/
+ * Purpose: Requests and receives the time data from the GPS
+ * Parameters:none
+ * Return value: byte hour, byte minute, byte second            Global variables for hour, minute and second
+ *****/
 
 void gps_get_time()
 {
@@ -693,11 +676,11 @@ void gps_get_time()
     GPSerror = 31;
   if ( buf[2] != 0x01 || buf[3] != 0x21 )
     GPSerror = 32;
-    
+
   if ( !_gps_verify_checksum(&buf[2], 24) ) {
     GPSerror = 33;
   }
-  
+
   if (GPSerror == 0) {
     if (buf[22] > 23 || buf[23] > 59 || buf[24] > 59)
     {
@@ -713,10 +696,10 @@ void gps_get_time()
 
 
 /*****
-Purpose: Checks to see if the GPS has got a satellite lock
-Parameters:none
-Return value:none  No value is returned but sets some global variables for longditude, lattitude and altitude
-*****/
+ * Purpose: Checks to see if the GPS has got a satellite lock
+ * Parameters:none
+ * Return value:none  No value is returned but sets some global variables for longditude, lattitude and altitude
+ *****/
 
 void initialise_interrupt()
 {
@@ -736,11 +719,11 @@ void initialise_interrupt()
 
 
 /*****
-Purpose: This is the interrupt routine which concats the data into a string,
-individual characters are then sent one at a time to the transmitter
-Parameters:none
-Return value: none
-*****/
+ * Purpose: This is the interrupt routine which concats the data into a string,
+ * individual characters are then sent one at a time to the transmitter
+ * Parameters:none
+ * Return value: none
+ *****/
 
 ISR(TIMER1_COMPA_vect)
 {
@@ -771,82 +754,86 @@ ISR(TIMER1_COMPA_vect)
   }
 
   switch (txstatus) {
-    case 0: // This is the optional delay between transmissions.
-      txj++;
-      if (txj > (TXDELAY * RTTY_BAUD)) {
-        txj = 0;
-        txstatus = 1;
-      }
-      break;
-    case 1: // Initialise transmission
-      if (alt > maxalt && sats >= 4)
-      {
-        maxalt = alt;
-      }
-      lockvariables = 1;
-      sprintf(txstring, "$$$$$%s,%i,%02d:%02d:%02d,%s%i.%06ld,%s%i.%06ld,%ld,%d,%i,%i", callsign, count, hour, minute,
-              second, lat < 0 ? "-" : "", lat_int, lat_dec, lon < 0 ? "-" : "", lon_int, lon_dec, maxalt, sats, errorstatus, currentTemperature);
-      sprintf(txstring, "%s*%04X\n", txstring, gps_CRC16_checksum(txstring));
-      maxalt = 0;
-      lockvariables = 0;
-      txstringlength = strlen(txstring);
-      txstatus = 2;
+  case 0: // This is the optional delay between transmissions.
+    txj++;
+    if (txj > (TXDELAY * RTTY_BAUD)) {
       txj = 0;
-      openLog.println(txstring);    //this should write the data string to the openLog SD card, one line for each entry
-      break;
+      txstatus = 1;
+    }
+    break;
+  case 1: // Initialise transmission
+    if (alt > maxalt && sats >= 4)
+    {
+      maxalt = alt;
+    }
+    lockvariables = 1;
+    sprintf(txstring, "$$$$$%s,%i,%02d:%02d:%02d,%s%i.%06ld,%s%i.%06ld,%ld,%d,%i,%i,%i,%i", callsign, count, hour, minute,
+    second, lat < 0 ? "-" : "", lat_int, lat_dec, lon < 0 ? "-" : "", lon_int, lon_dec, maxalt, sats, errorstatus, tempInside, tempOutside, actualAltitude);
+    sprintf(txstring, "%s*%04X\n", txstring, gps_CRC16_checksum(txstring));
+    maxalt = 0;
+    lockvariables = 0;
+    txstringlength = strlen(txstring);
+    txstatus = 2;
+    txj = 0;
+    openLog.print(txstring);
+    openLog.print(currentPressure);
+    openLog.print(actualAltitude);
 
-    case 2: // Grab a char and lets go transmit it.
-      if ( txj < txstringlength)
-      {
-        txc = txstring[txj];
-        txj++;
-        txstatus = 3;
-        rtty_txbit (0); // Start Bit;
-        txi = 0;
-      }
-      else
-      {
-        txstatus = 0; // Should be finished
-        txj = 0;
-        count++;
-      }
+    //this should write the data string to the openLog SD card, one line for each entry
+    break;
+
+  case 2: // Grab a char and lets go transmit it.
+    if ( txj < txstringlength)
+    {
+      txc = txstring[txj];
+      txj++;
+      txstatus = 3;
+      rtty_txbit (0); // Start Bit;
+      txi = 0;
+    }
+    else
+    {
+      txstatus = 0; // Should be finished
+      txj = 0;
+      count++;
+    }
+    break;
+  case 3:
+    if (txi < ASCII)
+    {
+      txi++;
+      if (txc & 1) rtty_txbit(1);
+      else rtty_txbit(0);
+      txc = txc >> 1;
       break;
-    case 3:
-      if (txi < ASCII)
-      {
-        txi++;
-        if (txc & 1) rtty_txbit(1);
-        else rtty_txbit(0);
-        txc = txc >> 1;
-        break;
-      }
-      else
-      {
-        rtty_txbit (1); // Stop Bit
-        txstatus = 4;
-        txi = 0;
-        break;
-      }
-    case 4:
-      if (STOPBITS == 2)
-      {
-        rtty_txbit (1); // Stop Bit
-        txstatus = 2;
-        break;
-      }
-      else
-      {
-        txstatus = 2;
-        break;
-      }
+    }
+    else
+    {
+      rtty_txbit (1); // Stop Bit
+      txstatus = 4;
+      txi = 0;
+      break;
+    }
+  case 4:
+    if (STOPBITS == 2)
+    {
+      rtty_txbit (1); // Stop Bit
+      txstatus = 2;
+      break;
+    }
+    else
+    {
+      txstatus = 2;
+      break;
+    }
   }
 }
 
 /*****
-Purpose: To send HIGH=1 and LOW=0 values to the transmitter providing signal modulation
-Parameters:int bit    A value of 1=HIGH a value 0=LOW
-Return value: none
-*****/
+ * Purpose: To send HIGH=1 and LOW=0 values to the transmitter providing signal modulation
+ * Parameters:int bit    A value of 1=HIGH a value 0=LOW
+ * Return value: none
+ *****/
 
 void rtty_txbit (int bit)
 {
@@ -865,20 +852,23 @@ void rtty_txbit (int bit)
 
 
 /*****
-Purpose: To obtain and set variuos global variables using other functions
-Parameters: none
-Return value: Sets various global variables for use in other functions
-*****/
+ * Purpose: To obtain and set variuos global variables using other functions
+ * Parameters: none
+ * Return value: Sets various global variables for use in other functions
+ *****/
 
 
 void prepare_data() {
-// The following two lines of code are used with the DallasOneWire Temperature Sensor only  
-// sensors.requestTemperatures();
-//  temperature = sensors.getTempCByIndex(0);
- currentTemperature = (int)bmp.readTemperature(); // obtain temperature from the BMP085 sensor
-  altitudeNow();  //sets the currentAltitude variable
+
+  sensors.requestTemperatures();
+  tempOutside = sensors.getTempCByIndex(0);
+  tempInside = (int)bmp.readTemperature(); // obtain temperature from the BMP085 sensor
+
+  actualAltitude =  (int)bmp.readAltitude(initialPressure) + START_ALT;
   currentPressure = bmp.readPressure();
+
   gps_check_lock();
   gps_get_position();
   gps_get_time();
 }
+
